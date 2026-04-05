@@ -1,0 +1,21 @@
+{
+  "name": "netsentinel-gateway",
+  "version": "1.0.0",
+  "description": "NetSentinel — Distributed Load Balancer & API Gateway",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "backends": "node ../backends/mockServer.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy": "^1.18.1",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5",
+    "node-fetch": "^2.7.0"
+  },
+  "keywords": ["load-balancer", "api-gateway", "circuit-breaker", "rate-limiter", "system-engineering"],
+  "author": "NetSentinel",
+  "license": "MIT"
+}
