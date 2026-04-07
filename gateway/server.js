@@ -21,6 +21,8 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const proxy = httpProxy.createProxyServer({ timeout: 5000 });
 
+const DASHBOARD_HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
+const GATEWAY_HOST = process.env.GATEWAY_HOST || '127.0.0.1';
 const GATEWAY_PORT = 3001;
 const DASHBOARD_PORT = 3002;
 
@@ -206,8 +208,8 @@ gatewayApp.use((req, res, next) => {
 });
 
 const gatewayServer = http.createServer(gatewayApp);
-gatewayServer.listen(GATEWAY_PORT, () => {
-  console.log(`[Gateway] Proxy dinliyor: http://localhost:${GATEWAY_PORT}`);
+gatewayServer.listen(GATEWAY_PORT, GATEWAY_HOST, () => {
+  console.log(`[Gateway] Proxy dinliyor: http://${GATEWAY_HOST}:${GATEWAY_PORT}`);
 });
 
 // ─── WebSocket Broadcast ────────────────────────────────────────────────────
@@ -250,14 +252,14 @@ setInterval(() => {
 }, 1000);
 
 // ─── Dashboard Sunucusu ─────────────────────────────────────────────────────
-server.listen(DASHBOARD_PORT, () => {
+server.listen(DASHBOARD_PORT, DASHBOARD_HOST, () => {
   console.log(`
 ╔══════════════════════════════════════════════╗
 ║        NetSentinel API Gateway                ║
 ╠══════════════════════════════════════════════╣
-║  🌐 Dashboard : http://localhost:${DASHBOARD_PORT}          ║
-║  🔀 Gateway   : http://localhost:${GATEWAY_PORT}           ║
-║  📡 WebSocket : ws://localhost:${DASHBOARD_PORT}            ║
+║  🌐 Dashboard : http://${DASHBOARD_HOST}:${DASHBOARD_PORT}          ║
+║  🔀 Gateway   : http://${GATEWAY_HOST}:${GATEWAY_PORT}           ║
+║  📡 WebSocket : ws://${DASHBOARD_HOST}:${DASHBOARD_PORT}            ║
 ╠══════════════════════════════════════════════╣
 ║  Backends: :4001 :4002 :4003 :4004           ║
 ║  (Önce: node ../backends/mockServer.js)       ║
