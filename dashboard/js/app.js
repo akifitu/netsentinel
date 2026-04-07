@@ -99,7 +99,7 @@ function updateBackendCards(backends) {
     backends.forEach((b, i) => {
       const card = document.createElement('div');
       card.className = 'card backend-card healthy';
-      card.id = `backend-card-${b.id}`;
+      card.id = `backend-card-${backendDomId(b.id)}`;
       card.innerHTML = buildBackendCardHTML(b, i);
       container.appendChild(card);
     });
@@ -109,73 +109,82 @@ function updateBackendCards(backends) {
 }
 
 function buildBackendCardHTML(b, i) {
-  const port = new URL(b.url).port;
-  const cbState = b.circuitBreaker?.state || 'CLOSED';
+  const domId = backendDomId(b.id);
+  const port = escapeHTML(readPort(b.url));
+  const cbState = normalizeCbState(b.circuitBreaker?.state);
   const cbIcon = { CLOSED: '🟢', OPEN: '🔴', HALF_OPEN: '🟡' }[cbState] || '🟢';
-  const health = b.healthy ? 'UP' : 'DOWN';
+  const health = normalizeHealthStatus(b.healthy);
+  const backendId = escapeHTML(b.id || 'backend');
+  const weight = toFiniteNumber(b.weight);
+  const totalRequests = toFiniteNumber(b.totalRequests);
+  const activeConnections = toFiniteNumber(b.activeConnections);
+  const errorRate = toFiniteNumber(b.errorRate);
+  const avgLatency = toFiniteNumber(b.avgLatency);
+  const color = BACKEND_COLORS[i % BACKEND_COLORS.length];
 
   return `
     <div class="backend-header">
       <div>
-        <div class="backend-name">${b.id}</div>
-        <div class="backend-url">:${port} · W:${b.weight}</div>
+        <div class="backend-name">${backendId}</div>
+        <div class="backend-url">:${port} · W:${weight}</div>
       </div>
-      <span class="health-badge ${health}" id="health-${b.id}">${health}</span>
+      <span class="health-badge ${health}" id="health-${domId}">${health}</span>
     </div>
     <div class="backend-stats">
       <div class="bstat">
         <div class="bstat-label">Toplam İstek</div>
-        <div class="bstat-value" id="total-${b.id}" style="color:${BACKEND_COLORS[i]}">${b.totalRequests}</div>
+        <div class="bstat-value" id="total-${domId}" style="color:${color}">${totalRequests}</div>
       </div>
       <div class="bstat">
         <div class="bstat-label">Aktif Bağl.</div>
-        <div class="bstat-value" id="conn-${b.id}">${b.activeConnections}</div>
+        <div class="bstat-value" id="conn-${domId}">${activeConnections}</div>
       </div>
       <div class="bstat">
         <div class="bstat-label">Hata Oranı</div>
-        <div class="bstat-value" id="err-${b.id}">${b.errorRate}%</div>
+        <div class="bstat-value" id="err-${domId}">${errorRate}%</div>
       </div>
       <div class="bstat">
         <div class="bstat-label">Ort. Gecikme</div>
-        <div class="bstat-value" id="lat-${b.id}">${b.avgLatency}ms</div>
+        <div class="bstat-value" id="lat-${domId}">${avgLatency}ms</div>
       </div>
     </div>
     <div>
-      <span class="cb-state ${cbState}" id="cb-${b.id}">${cbIcon} ${cbState}</span>
+      <span class="cb-state ${cbState}" id="cb-${domId}">${cbIcon} ${cbState}</span>
     </div>
     <div class="req-bar" style="margin-top:10px">
-      <div class="req-bar-fill" id="reqbar-${b.id}" style="width:0%"></div>
+      <div class="req-bar-fill" id="reqbar-${domId}" style="width:0%"></div>
     </div>
   `;
 }
 
 function updateBackendCard(b, i) {
-  const card = document.getElementById(`backend-card-${b.id}`);
+  const domId = backendDomId(b.id);
+  const card = document.getElementById(`backend-card-${domId}`);
   if (!card) return;
 
-  const health = b.healthy ? 'UP' : 'DOWN';
+  const health = normalizeHealthStatus(b.healthy);
   card.className = `card backend-card ${b.healthy ? 'healthy' : 'unhealthy'}`;
 
-  setHTML(`health-${b.id}`, health);
-  document.getElementById(`health-${b.id}`)?.setAttribute('class', `health-badge ${health}`);
+  setText(`health-${domId}`, health);
+  document.getElementById(`health-${domId}`)?.setAttribute('class', `health-badge ${health}`);
 
-  setText(`total-${b.id}`, b.totalRequests);
-  setText(`conn-${b.id}`, b.activeConnections);
-  setText(`err-${b.id}`, `${b.errorRate}%`);
-  setText(`lat-${b.id}`, `${b.avgLatency}ms`);
+  setText(`total-${domId}`, toFiniteNumber(b.totalRequests));
+  setText(`conn-${domId}`, toFiniteNumber(b.activeConnections));
+  setText(`err-${domId}`, `${toFiniteNumber(b.errorRate)}%`);
+  setText(`lat-${domId}`, `${toFiniteNumber(b.avgLatency)}ms`);
 
-  const cbState = b.circuitBreaker?.state || 'CLOSED';
+  const cbState = normalizeCbState(b.circuitBreaker?.state);
   const cbIcon = { CLOSED: '🟢', OPEN: '🔴', HALF_OPEN: '🟡' }[cbState] || '🟢';
-  const cbEl = document.getElementById(`cb-${b.id}`);
+  const cbEl = document.getElementById(`cb-${domId}`);
   if (cbEl) {
     cbEl.textContent = `${cbIcon} ${cbState}`;
     cbEl.className = `cb-state ${cbState}`;
   }
 
   // Toplam req'e göre bar genişliği
-  const total = state.backends.reduce((s, bb) => s + bb.totalRequests, 0);
-  const pct = total > 0 ? (b.totalRequests / total * 100) : 0;
-  const bar = document.getElementById(`reqbar-${b.id}`);
+  const total = state.backends.reduce((s, bb) => s + toFiniteNumber(bb.totalRequests), 0);
+  const pct = total > 0 ? clampPercent((toFiniteNumber(b.totalRequests) / total) * 100) : 0;
+  const bar = document.getElementById(`reqbar-${domId}`);
   if (bar) bar.style.width = `${pct}%`;
 }
 
@@ -191,25 +200,28 @@ function updateDistribution(dist) {
   const entries = Object.entries(dist);
   if (container.children.length === 0) {
     entries.forEach(([id, count], i) => {
-      const pct = ((count / total) * 100).toFixed(1);
+      const domId = backendDomId(id);
+      const pct = clampPercent((toFiniteNumber(count) / total) * 100).toFixed(1);
+      const label = escapeHTML(id);
       const div = document.createElement('div');
       div.className = 'dist-item';
       div.innerHTML = `
         <div class="dist-label">
-          <span>${id}</span>
-          <span id="dist-val-${id}">${pct}%</span>
+          <span>${label}</span>
+          <span id="dist-val-${domId}">${pct}%</span>
         </div>
         <div class="dist-bar">
-          <div class="dist-fill dist-fill-${i}" id="dist-bar-${id}" style="width:${pct}%"></div>
+          <div class="dist-fill dist-fill-${i % BACKEND_COLORS.length}" id="dist-bar-${domId}" style="width:${pct}%"></div>
         </div>
       `;
       container.appendChild(div);
     });
   } else {
     entries.forEach(([id, count]) => {
-      const pct = ((count / total) * 100).toFixed(1);
-      setText(`dist-val-${id}`, `${pct}%`);
-      const bar = document.getElementById(`dist-bar-${id}`);
+      const domId = backendDomId(id);
+      const pct = clampPercent((toFiniteNumber(count) / total) * 100).toFixed(1);
+      setText(`dist-val-${domId}`, `${pct}%`);
+      const bar = document.getElementById(`dist-bar-${domId}`);
       if (bar) bar.style.width = `${pct}%`;
     });
   }
@@ -231,34 +243,53 @@ function updateCBPanel(backends) {
 
   if (container.children.length === 0) {
     backends.forEach(b => {
+      const domId = backendDomId(b.id);
       const item = document.createElement('div');
       item.className = 'cb-item';
-      item.id = `cbitem-${b.id}`;
-      item.innerHTML = `
-        <div class="cb-item-name">${b.id}</div>
-        <span class="cb-state CLOSED" id="cbitem-state-${b.id}">🟢 CLOSED</span>
-        <span class="cb-item-fails" id="cbitem-fails-${b.id}">0 hata</span>
-        <button class="reset-btn" onclick="resetCB('${b.id}')">Reset</button>
-      `;
+      item.id = `cbitem-${domId}`;
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'cb-item-name';
+      nameEl.textContent = String(b.id || 'backend');
+
+      const stateEl = document.createElement('span');
+      stateEl.className = 'cb-state CLOSED';
+      stateEl.id = `cbitem-state-${domId}`;
+      stateEl.textContent = '🟢 CLOSED';
+
+      const failEl = document.createElement('span');
+      failEl.className = 'cb-item-fails';
+      failEl.id = `cbitem-fails-${domId}`;
+      failEl.textContent = '0 hata';
+
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'reset-btn';
+      resetBtn.type = 'button';
+      resetBtn.textContent = 'Reset';
+      resetBtn.addEventListener('click', () => resetCB(String(b.id || 'backend')));
+
+      item.append(nameEl, stateEl, failEl, resetBtn);
       container.appendChild(item);
     });
   } else {
     backends.forEach(b => {
+      const domId = backendDomId(b.id);
       const cb = b.circuitBreaker || { state: 'CLOSED', failCount: 0 };
+      const cbState = normalizeCbState(cb.state);
       const icon = { CLOSED: '🟢', OPEN: '🔴', HALF_OPEN: '🟡' }[cb.state] || '🟢';
-      const el = document.getElementById(`cbitem-state-${b.id}`);
+      const el = document.getElementById(`cbitem-state-${domId}`);
       if (el) {
-        el.textContent = `${icon} ${cb.state}`;
-        el.className = `cb-state ${cb.state}`;
+        el.textContent = `${icon} ${cbState}`;
+        el.className = `cb-state ${cbState}`;
       }
-      setText(`cbitem-fails-${b.id}`, `${cb.failCount} hata`);
+      setText(`cbitem-fails-${domId}`, `${toFiniteNumber(cb.failCount)} hata`);
     });
   }
 }
 
 async function resetCB(backendId) {
   try {
-    await fetch(`/api/circuitbreaker/reset/${backendId}`, { method: 'POST' });
+    await fetch(`/api/circuitbreaker/reset/${encodeURIComponent(backendId)}`, { method: 'POST' });
     showToast(`✅ ${backendId} circuit breaker sıfırlandı`, 'success');
   } catch (e) {
     showToast('❌ Reset başarısız', 'error');
@@ -347,12 +378,53 @@ async function loadInitialData() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
-function setHTML(id, v) { const el = document.getElementById(id); if (el) el.innerHTML = v; }
 function setConnStatus(connected) {
   const dot = document.getElementById('conn-dot');
   const txt = document.getElementById('conn-text');
   if (dot) dot.className = `conn-dot${connected ? '' : ' off'}`;
   if (txt) txt.textContent = connected ? 'Bağlı' : 'Bağlantı Yok';
+}
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampPercent(value) {
+  return Math.min(Math.max(toFiniteNumber(value), 0), 100);
+}
+
+function backendDomId(value) {
+  const sanitized = String(value ?? 'backend').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+  return sanitized || 'backend';
+}
+
+function normalizeHealthStatus(value) {
+  return value ? 'UP' : 'DOWN';
+}
+
+function normalizeCbState(value) {
+  const normalized = String(value ?? '').toUpperCase();
+  return ['CLOSED', 'OPEN', 'HALF_OPEN'].includes(normalized) ? normalized : 'CLOSED';
+}
+
+function readPort(url) {
+  try {
+    const parsed = new URL(String(url ?? ''));
+    return parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+  } catch (e) {
+    return '?';
+  }
 }
 
 function startClock() {

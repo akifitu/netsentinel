@@ -25,6 +25,22 @@ const DASHBOARD_HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 const GATEWAY_HOST = process.env.GATEWAY_HOST || '127.0.0.1';
 const GATEWAY_PORT = 3001;
 const DASHBOARD_PORT = 3002;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+function originPort(parsedUrl) {
+  if (parsedUrl.port) return parsedUrl.port;
+  return parsedUrl.protocol === 'https:' ? '443' : '80';
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    return LOOPBACK_HOSTS.has(parsed.hostname) && originPort(parsed) === String(DASHBOARD_PORT);
+  } catch (err) {
+    return false;
+  }
+}
 
 // ─── Backend Kayıt ──────────────────────────────────────────────────────────
 const BACKEND_CONFIG = [
@@ -44,7 +60,11 @@ healthChecker.start();
 let currentAlgorithm = 'round-robin';
 
 // ─── Middleware (Dashboard) ──────────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, isAllowedOrigin(origin));
+  }
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../dashboard')));
 
@@ -215,7 +235,11 @@ gatewayServer.listen(GATEWAY_PORT, GATEWAY_HOST, () => {
 // ─── WebSocket Broadcast ────────────────────────────────────────────────────
 const clients = new Set();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    ws.close(1008, 'Origin not allowed');
+    return;
+  }
   clients.add(ws);
   ws.send(JSON.stringify({ type: 'connected', algorithm: currentAlgorithm }));
 
